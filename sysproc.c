@@ -29,11 +29,11 @@ sys_wait(void)
 int
 sys_kill(void)
 {
-  int pid;
+  int pid, signum;
 
-  if(argint(0, &pid) < 0)
+  if(argint(0, &pid) < 0 || argint(0, &signum) < 0)
     return -1;
-  return kill(pid);
+  return kill(pid,signum);
 }
 
 int
@@ -88,4 +88,43 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+int
+sys_sigprocmask(void)
+{
+    int sigprocmask;
+
+    if(argint(0, &sigprocmask) < 0)
+        return -1;
+    
+    uint old = myproc()->sigMask;
+    myproc()->sigMask=sigprocmask;
+
+    return old;
+}
+
+int
+sys_sigaction(void) 
+{
+    int signum;
+    struct sigaction *act;
+    struct sigaction *oldact;
+
+    if(argint(0, &signum) < 0 
+        || argptr(1,(void *)&act,sizeof(struct sigaction)) < 0 
+        || argptr(2,(void *)&oldact,sizeof(struct sigaction)) < 0){
+        
+        return -1;
+    }
+
+    return registerSig(signum,act,oldact);
+}
+int
+sys_sigret(void)
+{
+  
+    *(myproc()->tf) = *(myproc()->userTfBackup);
+    return 0;
+  
 }

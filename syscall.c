@@ -82,6 +82,9 @@ argstr(int n, char **pp)
   return fetchstr(addr, pp);
 }
 
+extern int sys_sigprocmask(void);
+extern int sys_sigaction(void);
+extern int sys_sigret(void);
 extern int sys_chdir(void);
 extern int sys_close(void);
 extern int sys_dup(void);
@@ -105,6 +108,9 @@ extern int sys_write(void);
 extern int sys_uptime(void);
 
 static int (*syscalls[])(void) = {
+[SYS_sigret]		sys_sigret,
+[SYS_sigaction]		sys_sigaction,
+[SYS_sigprocmask]		sys_sigprocmask,
 [SYS_fork]    sys_fork,
 [SYS_exit]    sys_exit,
 [SYS_wait]    sys_wait,

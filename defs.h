@@ -9,6 +9,7 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+struct sigaction;
 
 // bio.c
 void            binit(void);
@@ -107,7 +108,7 @@ int             cpuid(void);
 void            exit(void);
 int             fork(void);
 int             growproc(int);
-int             kill(int);
+int             kill(int, int);
 struct cpu*     mycpu(void);
 struct proc*    myproc();
 void            pinit(void);
@@ -120,6 +121,11 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+
+int             registerSig(int signum,struct sigaction* act,struct sigaction* oldact);
+void            sigcont(int);
+void            sigstop(int);
+void            sigign(int);
 
 // swtch.S
 void            swtch(struct context**, struct context*);
@@ -143,6 +149,7 @@ void            initsleeplock(struct sleeplock*, char*);
 int             memcmp(const void*, const void*, uint);
 void*           memmove(void*, const void*, uint);
 void*           memset(void*, int, uint);
+void*           memcpy(void*, const void*, uint);
 char*           safestrcpy(char*, const char*, int);
 int             strlen(const char*);
 int             strncmp(const char*, const char*, uint);

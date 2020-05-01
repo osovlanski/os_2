@@ -23,6 +23,16 @@ alltraps:
   # Return falls through to trapret...
 .globl trapret
 trapret:
+  pushl %ebp
+  mov %ebp,%esp
+  mov %eax,[ebp+12] ;signal pending
+  mov %ebx,[ebp+8]  ;signalhandler (8 byte)array[32] 
+
+  
+
+  mov %esp,%ebp
+  popl %ebp
+
   popal
   popl %gs
   popl %fs
