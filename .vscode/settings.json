@@ -1,5 +1,11 @@
 {
     "files.associations": {
-        "cstring": "c"
-    }
+        "cstring": "c",
+        "cstdlib": "c",
+        "*.tcc": "c",
+        "memory": "c",
+        "proc.h": "c",
+        "signal.h": "c"
+    },
+    "C_Cpp.errorSquiggles": "Disabled"
 }

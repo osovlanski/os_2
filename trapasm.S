@@ -1,3 +1,4 @@
+#include "asm.h"
 #include "mmu.h"
 
   # vectors.S sends all traps here.
@@ -23,16 +24,8 @@ alltraps:
   # Return falls through to trapret...
 .globl trapret
 trapret:
-  pushl %ebp
-  mov %ebp,%esp
-  mov %eax,[ebp+12] ;signal pending
-  mov %ebx,[ebp+8]  ;signalhandler (8 byte)array[32] 
-
+  call handlingSignals
   
-
-  mov %esp,%ebp
-  popl %ebp
-
   popal
   popl %gs
   popl %fs
@@ -40,3 +33,15 @@ trapret:
   popl %ds
   addl $0x8, %esp  # trapno and errcode
   iret
+
+
+#include "syscall.h"
+#include "traps.h"
+
+.globl invoke_sigret_start
+.globl invoke_sigret_end
+
+invoke_sigret_start:
+  movl $SYS_sigret, %eax
+  int $T_SYSCALL
+invoke_sigret_end:

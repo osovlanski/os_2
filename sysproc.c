@@ -31,8 +31,9 @@ sys_kill(void)
 {
   int pid, signum;
 
-  if(argint(0, &pid) < 0 || argint(0, &signum) < 0)
+  if(argint(0, &pid) < 0 || argint(1, &signum) < 0)
     return -1;
+
   return kill(pid,signum);
 }
 
@@ -123,8 +124,9 @@ sys_sigaction(void)
 int
 sys_sigret(void)
 {
-  
-    *(myproc()->tf) = *(myproc()->userTfBackup);
+    if (myproc()->tf && myproc()->userTfBackup)
+        sigret();
+
     return 0;
   
 }

@@ -22,6 +22,7 @@ extern void trapret(void);
 
 static void wakeup1(void *chan);
 
+
 void pinit(void)
 {
   initlock(&ptable.lock, "ptable");
@@ -116,13 +117,10 @@ found:
   p->tf = (struct trapframe *)sp;
 
   // Set up new context to start executing at forkret,
+  // *(struct sigaction *)sp = (struct sigaction *)p->sighandler;
+  //sp -= 4;
+  //*(uint *)sp = (uint)p->sigPending;
   
-  //push pending
-  sp -=4;
-  *(uint *)sp = p->sigPending;
-  //push sighandler array
-  sp -=4;
-  *(uint *)sp = p->sighandler;
 
   // which returns to trapret.
   sp -= 4;
@@ -131,13 +129,17 @@ found:
   sp -= sizeof *p->context;
   p->context = (struct context *)sp;
   memset(p->context, 0, sizeof *p->context);
-  
-  memset(p->sighandler, SIG_DFL, 32 * sizeof(void *));
-  sigemptyset(&p->sigMask);
 
+  for (int i = 0; i < MAXSIG; i++)
+      p->sighandler[i].sa_handler = sigkill;
+  
+  p->sighandler[SIG_IGN].sa_handler = sigign;
+  p->sighandler[SIGCONT].sa_handler = sigign;
+  sigemptyset(&p->sigMask);
+  //memset(p->sighandler, 0, MAXSIG * sizeof(struct sigaction));
+  
   p->context->eip = (uint)forkret;
   
-
   return p;
 }
 
@@ -371,7 +373,7 @@ void scheduler(void)
     acquire(&ptable.lock);
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     {
-      if (p->state != RUNNABLE || sigismember(&p->sigPending,SIGCONT)) 
+      if (p->state != RUNNABLE) 
         continue;
 
       // Switch to chosen process.  It is the process's job
@@ -446,8 +448,10 @@ void forkret(void)
 
   // Return to "caller", actually trapret (see allocproc).
   // myproc()->context->ebx = myproc()->sigPending;
-  *(myproc()->userTfBackup) = *(myproc()->tf);
-
+  //*(myproc()->userTfBackup) = *(myproc()->tf);
+    // *((int*)(myproc()->tf->esp-4)) = 9;
+    // myproc()->tf->esp -= 4;
+    
 }
 
 // Atomically release lock and sleep on chan.
@@ -511,38 +515,70 @@ void wakeup(void *chan)
   release(&ptable.lock);
 }
 
-void sigcont(int n){
+void sigcont(int pid){
 
-  myproc()->sighandler[SIGSTOP]->sa_handler = sigstop;
-  myproc()->sighandler[SIGCONT]->sa_handler = sigign;
+  struct proc *p;
+  acquire(&ptable.lock);
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+  {
+    if (p->pid == pid){
+      p->sighandler[SIGSTOP].sa_handler = sigstop;
+      p->sighandler[SIGCONT].sa_handler = sigign;
+    }
 
-  //sigset(myproc()->sigPending, SIGCONT);
-   // return cont handler to be ignore sigign
-   // not mandatory: restore mask the previous state before sigstop?
+  }
+
+  release(&ptable.lock); 
 }
 
-void sigstop(int n)
+void sigstop(int pid)
 {
-  myproc()->sighandler[SIGCONT]->sa_handler = sigcont;
-  myproc()->sighandler[SIGSTOP]->sa_handler = sigign;
+  struct proc *p;
+  acquire(&ptable.lock);
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+  {
+    if (p->pid == pid){
+      p->sighandler[SIGCONT].sa_handler = sigcont;
+      p->sighandler[SIGSTOP].sa_handler = sigign;
 
-  // not mandatory: change cont not to be blocked (in proc mask)
-  // not ignore cont -> change cont handler from ignore to sigcont 
-  // check in scheudler/trap if sigcont not ignore -> not give cpu time to curr process
+    }
+
+  }
+
+  release(&ptable.lock);
   yield();
+}
+
+void sigret(void){
+  memmove(myproc()->tf,myproc()->userTfBackup,sizeof(struct trapframe));
+  sigemptyset(&myproc()->sigPending);
 }
 
 void sigign(int i)
 {
 }
 
-void sigkill(int procAdr)
+void sigkill(int pid)
 {
-  struct proc *p = (struct proc *)procAdr;
-  p->killed = 1;
-  // Wake process from sleep if necessary.
-  if (p->state == SLEEPING)
-    p->state = RUNNABLE;
+  
+  struct proc *p;
+  acquire(&ptable.lock);
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+  {
+    if (p->pid == pid){
+      //cprintf("kill pid %d\n",pid);
+      p->killed = 1;
+      // Wake process from sleep if necessary.
+      if (p->state == SLEEPING)
+        p->state = RUNNABLE;
+      
+      break;
+    }
+
+  }
+  release(&ptable.lock);
+  //cprintf("done killing\n");
+
 }
 
 // void sigset(uint *pending,int signum){
@@ -562,10 +598,10 @@ int registerSig(int signum,struct sigaction *act,struct sigaction *oldact){
     // }
 
     if (oldact != null){
-        oldact = myproc()->sighandler[signum];
+        *oldact = myproc()->sighandler[signum];
     }
 
-    myproc()->sighandler[signum] = act;
+    myproc()->sighandler[signum] = *act;
     
     return 0;
 }
@@ -585,13 +621,10 @@ int kill(int pid, int signum)
   acquire(&ptable.lock);
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
-    if (p->pid == pid){
-      //ToDo: check about SIG_DFL and probabbly change this condition
-      if ((signum == SIGKILL || signum == SIG_DFL) && p->sighandler[signum] == SIG_DFL)
-        ((struct sigaction*)p->sighandler[signum])->sa_handler = sigkill;
-
-      if (signum == SIGKILL || signum == SIGSTOP || !sigismember(&p->sigMask,signum))
+    if (p->pid == pid){    
+      if (signum == SIGKILL || signum == SIGSTOP || !sigismember(&p->sigMask,signum)){
         sigup(&p->sigPending,signum);
+      }
 
       release(&ptable.lock);
       return 0;
@@ -638,3 +671,62 @@ void procdump(void)
     cprintf("\n");
   }
 }
+
+static int sigisdefault(int signum);
+static int sigisignore(int signum);
+static void handlingSignal(int signum);
+
+
+int sigisdefault(int signum) {return myproc()->sighandler[signum].sa_handler == myproc()->sighandler[SIG_DFL].sa_handler;}
+int sigisignore(int signum) {return myproc()->sighandler[signum].sa_handler == myproc()->sighandler[SIG_IGN].sa_handler;}
+
+
+
+void handlingSignals(void){
+    if(!myproc()) return;
+    
+    for (int i=0;i<MAXSIG;i++){
+      uint currmask = myproc()->sigMask;
+      handlingSignal(i);
+      myproc()->sigMask = currmask;
+    }
+    
+}
+
+void handlingSignal(int signum){
+    if(myproc() == null || signum < 0 || signum > 31) return;
+    if (!sigismember(&myproc()->sigPending,signum)) return;
+
+    struct proc * p = myproc();
+    sigdown(&p->sigPending,signum);
+    //kernel signals;
+    //cprintf("kernal signals\n");
+    if(signum == SIGKILL || signum == SIGSTOP) {
+      p->sighandler[signum].sa_handler(p->pid); 
+      return;
+    }
+    if (sigismember(&p->sigMask,signum)) return;
+    if(signum == SIGCONT) {
+      p->sighandler[SIGCONT].sa_handler(p->pid);  
+      return;
+    }
+    if(sigisdefault(signum)) {
+      p->sighandler[SIG_DFL].sa_handler(p->pid); 
+      return;
+    } 
+    if(sigisignore(signum)) {
+      p->sighandler[SIG_IGN].sa_handler(p->pid); 
+      return;
+    } 
+
+    //user signals 
+    //cprintf("user signals\n");
+    memmove(p->userTfBackup,p->tf,sizeof(struct trapframe));
+    p->sigMask = p->sighandler[signum].sigmask; 
+    p->tf->esp -= (uint)&invoke_sigret_end - (uint)&invoke_sigret_end ;
+    memmove((void*)p->tf->esp, invoke_sigret_start, (uint)&invoke_sigret_end - (uint)&invoke_sigret_start);
+    *((int*)(p->tf->esp-4)) = signum;
+    p->tf->esp -= 4;
+    p->tf->eip=(uint)p->sighandler[signum].sa_handler;
+
+ }

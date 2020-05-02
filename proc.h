@@ -14,9 +14,6 @@
 #define sigdown(set, signo)	( *(set) &= ~(1 << signo))
 #define sigismember(set, signo)	( (*(set) & (1 << ((signo) - 1))) != 0)
 
-//#define sigismember(mask,num) ((mask & (1 << (num-1))) != 0)
- 
-
 
 // Per-CPU state
 struct cpu {
@@ -78,8 +75,10 @@ struct proc {
 
   uint sigPending; 
   uint sigMask;
-  struct sigaction *sighandler[32];        
-  struct trapframe* userTfBackup;
+  struct sigaction sighandler[MAXSIG];        
+  struct trapframe *userTfBackup;
+
+  //struct sigaction moshe[32];
 };
 
 
