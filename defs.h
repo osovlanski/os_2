@@ -127,7 +127,12 @@ void            sigcont(int);
 void            sigstop(int);
 void            sigign(int);
 void            sigkill(int);
-void            sigret(void);
+
+int            sigret(void);
+
+int             sigisdefault(int signum); 
+int             sigisignore(int signum); 
+
 
 
 //invoke sigret.S

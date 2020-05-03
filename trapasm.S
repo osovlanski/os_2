@@ -23,9 +23,11 @@ alltraps:
 
   # Return falls through to trapret...
 .globl trapret
+.global afterhandling
 trapret:
   call handlingSignals
-  
+afterhandling:
+
   popal
   popl %gs
   popl %fs

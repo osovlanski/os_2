@@ -17,9 +17,24 @@
 //     }
 // }
 
+
+void handler(int sig){
+    printf(1,"this is my handler on user space, signum: %d\n",sig);
+}
+
 int
 main(int argc, char *argv[])
 {
+    struct sigaction sa;
+    memset(&sa,0,sizeof(sa));
+    sa.sa_handler = &handler;
+    sigaction(4,&sa,null);
+    kill(getpid(),4);
+    // struct sigaction act = {sigcatcher,0};
+    // sigaction(act,)
+
+
+
     // int n = 5,status,pid;    
     // struct sigaction act = {sigcatcher,0};
     // sigaction(act,)
@@ -33,7 +48,7 @@ main(int argc, char *argv[])
     //     }
     // }
     
-    kill(getpid(),9);
-
+    //kill(getpid(),9);
+    printf(1,"bye!!!!!!!!!!!!!!!\n");
     exit();
 }

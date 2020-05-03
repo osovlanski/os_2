@@ -118,15 +118,17 @@ sys_sigaction(void)
         
         return -1;
     }
-
+    
     return registerSig(signum,act,oldact);
 }
 int
 sys_sigret(void)
 {
-    if (myproc()->tf && myproc()->userTfBackup)
-        sigret();
+  if (myproc()->tf && myproc()->userTfBackup){     
+    sigret();
+  }
 
-    return 0;
+  cprintf("end sys_sigret\n");
+  return 0;
   
 }

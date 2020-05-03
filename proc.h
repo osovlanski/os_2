@@ -12,7 +12,7 @@
 #define sigfillset(set)		( *(set) = ~(int)0 )
 #define sigup(set, signo)	( *(set) |= 1 << signo)
 #define sigdown(set, signo)	( *(set) &= ~(1 << signo))
-#define sigismember(set, signo)	( (*(set) & (1 << ((signo) - 1))) != 0)
+#define sigismember(set, signo)	( (*(set) & (1 << signo)) != 0)
 
 
 // Per-CPU state
@@ -75,10 +75,10 @@ struct proc {
 
   uint sigPending; 
   uint sigMask;
-  struct sigaction sighandler[MAXSIG];        
+  struct sigaction *sighandler[MAXSIG];        
   struct trapframe *userTfBackup;
 
-  //struct sigaction moshe[32];
+  uint espBackup;
 };
 
 

@@ -19,6 +19,7 @@ static struct proc *initproc;
 int nextpid = 1;
 extern void forkret(void);
 extern void trapret(void);
+extern void afterhandling(void);
 
 static void wakeup1(void *chan);
 
@@ -112,14 +113,14 @@ found:
   }
   sp = p->kstack + KSTACKSIZE;
 
+  
   // Leave room for trap frame.
   sp -= sizeof *p->tf;
   p->tf = (struct trapframe *)sp;
 
+  
+  
   // Set up new context to start executing at forkret,
-  // *(struct sigaction *)sp = (struct sigaction *)p->sighandler;
-  //sp -= 4;
-  //*(uint *)sp = (uint)p->sigPending;
   
 
   // which returns to trapret.
@@ -130,14 +131,24 @@ found:
   p->context = (struct context *)sp;
   memset(p->context, 0, sizeof *p->context);
 
-  for (int i = 0; i < MAXSIG; i++)
-      p->sighandler[i].sa_handler = sigkill;
+  //push handlers to start of stack (for avoiding overriding data)
+  char *sp1;
+  sp1 = p->kstack+(MAXSIG*sizeof(struct sigaction))+sizeof *p->userTfBackup;
+  sp1 -= sizeof *p->userTfBackup;
+  p->userTfBackup = (struct trapframe *)sp1;
+
+
+  for (int i = 0; i < MAXSIG; i++){
+      sp1 -= sizeof(struct sigaction);
+      p->sighandler[i] = (struct sigaction *)sp1;
+      p->sighandler[i]->sa_handler = sigkill;
+  }
   
-  p->sighandler[SIG_IGN].sa_handler = sigign;
-  p->sighandler[SIGCONT].sa_handler = sigign;
+  p->sighandler[SIG_IGN]->sa_handler = sigign;
+  p->sighandler[SIGCONT]->sa_handler = sigign;
   sigemptyset(&p->sigMask);
-  //memset(p->sighandler, 0, MAXSIG * sizeof(struct sigaction));
-  
+  sigemptyset(&p->sigPending);
+     
   p->context->eip = (uint)forkret;
   
   return p;
@@ -522,8 +533,8 @@ void sigcont(int pid){
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
     if (p->pid == pid){
-      p->sighandler[SIGSTOP].sa_handler = sigstop;
-      p->sighandler[SIGCONT].sa_handler = sigign;
+      p->sighandler[SIGSTOP]->sa_handler = sigstop;
+      p->sighandler[SIGCONT]->sa_handler = sigign;
     }
 
   }
@@ -538,8 +549,8 @@ void sigstop(int pid)
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
     if (p->pid == pid){
-      p->sighandler[SIGCONT].sa_handler = sigcont;
-      p->sighandler[SIGSTOP].sa_handler = sigign;
+      p->sighandler[SIGCONT]->sa_handler = sigcont;
+      p->sighandler[SIGSTOP]->sa_handler = sigign;
 
     }
 
@@ -549,18 +560,12 @@ void sigstop(int pid)
   yield();
 }
 
-void sigret(void){
-  memmove(myproc()->tf,myproc()->userTfBackup,sizeof(struct trapframe));
-  sigemptyset(&myproc()->sigPending);
-}
-
 void sigign(int i)
 {
 }
 
 void sigkill(int pid)
 {
-  
   struct proc *p;
   acquire(&ptable.lock);
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
@@ -596,12 +601,14 @@ int registerSig(int signum,struct sigaction *act,struct sigaction *oldact){
     // if (sigismember(act->sigmask,SIGKILL) || sigismember(act->sigmask,SIGSTOP)){
     //     return -1;
     // }
-
+    struct proc * p = myproc();
     if (oldact != null){
-        *oldact = myproc()->sighandler[signum];
+        *oldact = *p->sighandler[signum];
     }
 
-    myproc()->sighandler[signum] = *act;
+    *p->sighandler[signum] = *act;
+    //p->sighandler[signum]->sa_handler = act->sa_handler;
+    //p->sighandler[signum]->sigmask = act->sigmask;
     
     return 0;
 }
@@ -612,7 +619,7 @@ int registerSig(int signum,struct sigaction *act,struct sigaction *oldact){
 int kill(int pid, int signum)
 {
   struct proc *p;
-
+  
   if (signum < 0 || signum > 31)
   {
     return -1;
@@ -621,7 +628,7 @@ int kill(int pid, int signum)
   acquire(&ptable.lock);
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
-    if (p->pid == pid){    
+    if (p->pid == pid){
       if (signum == SIGKILL || signum == SIGSTOP || !sigismember(&p->sigMask,signum)){
         sigup(&p->sigPending,signum);
       }
@@ -672,61 +679,107 @@ void procdump(void)
   }
 }
 
-static int sigisdefault(int signum);
-static int sigisignore(int signum);
-static void handlingSignal(int signum);
+//static int sigisdefault(int signum);
+//static int sigisignore(int signum);
+static void handlingKernelSignal(int signum);
+static void handlingUserSignal(int signum,int c);
 
 
-int sigisdefault(int signum) {return myproc()->sighandler[signum].sa_handler == myproc()->sighandler[SIG_DFL].sa_handler;}
-int sigisignore(int signum) {return myproc()->sighandler[signum].sa_handler == myproc()->sighandler[SIG_IGN].sa_handler;}
+int sigisdefault(int signum) {return myproc()->sighandler[signum]->sa_handler == myproc()->sighandler[SIG_DFL]->sa_handler;}
+int sigisignore(int signum) {return myproc()->sighandler[signum]->sa_handler == myproc()->sighandler[SIG_IGN]->sa_handler;}
 
+static int isKernelSig(int signum) {return signum == SIG_DFL || signum == SIG_IGN || signum == SIGSTOP || signum == SIGKILL || signum == SIGCONT;}
+
+int sigret(void){
+  *myproc()->tf = *myproc()->userTfBackup;
+  *((uint *)myproc()->userTfBackup->esp) = myproc()->espBackup;
+  cprintf("end sigret\n");
+  cprintf("end esp:adr %x value:%x\n",myproc()->tf->esp,*((uint *)myproc()->tf->esp));
+  return 0;
+}
 
 
 void handlingSignals(void){
-    if(!myproc()) return;
+  struct proc * p = myproc();
+  if(p==null) return;
+  
+  if(p->sigPending == 0) return;
+  int countUserSignals = 0;
+  uint currmask = p->sigMask;
+
+  //kernel signals
+  for (int i=0;i<MAXSIG;i++){
+    if(p->sigPending == 0) break;
+    if(sigismember(&p->sigPending,i)){
+      if(isKernelSig(i)) handlingKernelSignal(i);
+      else countUserSignals+=1;
+    }  
     
+  }  
+
+  //user signals
+  if(countUserSignals > 0){
+    //memmove(p->userTfBackup,p->tf,sizeof(struct trapframe));
+    *p->userTfBackup=*p->tf;
+    p->espBackup = *((uint *)p->userTfBackup->esp);
+    cprintf("start esp:adr %x value:%x\n",p->userTfBackup->esp,*((uint *)p->userTfBackup->esp));
     for (int i=0;i<MAXSIG;i++){
-      uint currmask = myproc()->sigMask;
-      handlingSignal(i);
-      myproc()->sigMask = currmask;
+      if(countUserSignals <= 0) break;
+      if (sigismember(&myproc()->sigPending,i)){
+        countUserSignals-=1;
+        handlingUserSignal(i,countUserSignals);
+      }      
     }
-    
+  }
+
+  p->sigMask = currmask;
 }
 
-void handlingSignal(int signum){
-    if(myproc() == null || signum < 0 || signum > 31) return;
+static
+void handlingKernelSignal(int signum){
     if (!sigismember(&myproc()->sigPending,signum)) return;
-
+ 
     struct proc * p = myproc();
     sigdown(&p->sigPending,signum);
-    //kernel signals;
-    //cprintf("kernal signals\n");
     if(signum == SIGKILL || signum == SIGSTOP) {
-      p->sighandler[signum].sa_handler(p->pid); 
+      p->sighandler[signum]->sa_handler(p->pid); 
       return;
     }
     if (sigismember(&p->sigMask,signum)) return;
     if(signum == SIGCONT) {
-      p->sighandler[SIGCONT].sa_handler(p->pid);  
+      p->sighandler[SIGCONT]->sa_handler(p->pid);  
       return;
     }
     if(sigisdefault(signum)) {
-      p->sighandler[SIG_DFL].sa_handler(p->pid); 
+      p->sighandler[SIG_DFL]->sa_handler(p->pid); 
       return;
     } 
     if(sigisignore(signum)) {
-      p->sighandler[SIG_IGN].sa_handler(p->pid); 
+      p->sighandler[SIG_IGN]->sa_handler(p->pid); 
       return;
     } 
 
-    //user signals 
-    //cprintf("user signals\n");
-    memmove(p->userTfBackup,p->tf,sizeof(struct trapframe));
-    p->sigMask = p->sighandler[signum].sigmask; 
-    p->tf->esp -= (uint)&invoke_sigret_end - (uint)&invoke_sigret_end ;
-    memmove((void*)p->tf->esp, invoke_sigret_start, (uint)&invoke_sigret_end - (uint)&invoke_sigret_start);
-    *((int*)(p->tf->esp-4)) = signum;
-    p->tf->esp -= 4;
-    p->tf->eip=(uint)p->sighandler[signum].sa_handler;
-
  }
+
+static
+void handlingUserSignal(int signum,int count){
+  //user signals
+    cprintf("user signals: count %d\n",count); 
+    struct proc * p = myproc();
+    sigdown(&p->sigPending,signum);
+    p->sigMask = p->sighandler[signum]->sigmask; 
+    if (count > 0){
+      *((int*)(p->tf->esp-4)) = signum;
+      p->tf->esp -= 4;
+      p->tf->eip=(uint)p->sighandler[signum]->sa_handler;
+
+    }else{
+      p->tf->esp -= (uint)invoke_sigret_end - (uint)invoke_sigret_end ;
+      memmove((void*)p->tf->esp, invoke_sigret_start, (uint)invoke_sigret_end - (uint)invoke_sigret_start);
+      *((int*)(p->tf->esp-4)) = signum;
+      *((int*)(p->tf->esp-8)) = p->tf->esp; // sigret system call code address
+      p->tf->esp -= 8;
+      p->tf->eip=(uint)p->sighandler[signum]->sa_handler;
+    }
+
+}
