@@ -19,8 +19,13 @@
 
 
 void handler(int sig){
-    printf(1,"this is my handler on user space, signum: %d\n",sig);
+    printf(1,"handler #1 on user space, signum: %d\n",sig);
 }
+
+void handler2(int sig){
+    printf(1,"handler #2 on user space, signum: %d\n",sig);
+}
+
 
 int
 main(int argc, char *argv[])
@@ -29,26 +34,11 @@ main(int argc, char *argv[])
     memset(&sa,0,sizeof(sa));
     sa.sa_handler = &handler;
     sigaction(4,&sa,null);
+    sa.sa_handler = &handler2;
+    sigaction(5,&sa,null);
     kill(getpid(),4);
-    // struct sigaction act = {sigcatcher,0};
-    // sigaction(act,)
-
-
-
-    // int n = 5,status,pid;    
-    // struct sigaction act = {sigcatcher,0};
-    // sigaction(act,)
-
-    // for (size_t i = 0; i < n; i++)
-    // {
-    //     if((pid = fork()) == pid){
-    //         printf(1,"PID %d ready \n",getpid());
-    //         j = i-1;
-
-    //     }
-    // }
+    kill(getpid(),5);
     
-    //kill(getpid(),9);
     printf(1,"bye!!!!!!!!!!!!!!!\n");
     exit();
 }

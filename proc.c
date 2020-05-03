@@ -691,10 +691,15 @@ int sigisignore(int signum) {return myproc()->sighandler[signum]->sa_handler == 
 static int isKernelSig(int signum) {return signum == SIG_DFL || signum == SIG_IGN || signum == SIGSTOP || signum == SIGKILL || signum == SIGCONT;}
 
 int sigret(void){
-  *myproc()->tf = *myproc()->userTfBackup;
-  *((uint *)myproc()->userTfBackup->esp) = myproc()->espBackup;
-  cprintf("end sigret\n");
-  cprintf("end esp:adr %x value:%x\n",myproc()->tf->esp,*((uint *)myproc()->tf->esp));
+  struct proc * p = myproc();
+  *p->tf = *p->userTfBackup;
+  //memmove(p->userTfBackup,p->tf,sizeof(struct trapframe));
+  memmove((void *)p->tf->esp,p->userStackbackup,(uint)invoke_sigret_end - (uint)invoke_sigret_start + 8);
+  kfree(p->userStackbackup);
+  //cprintf("end esp:adr %x value:%x\n",myproc()->tf->esp,*((uint *)p->tf->esp));
+  //*((uint *)myproc()->userTfBackup->esp) = myproc()->espBackup;
+  //cprintf("end sigret\n");
+  
   return 0;
 }
 
@@ -704,6 +709,7 @@ void handlingSignals(void){
   if(p==null) return;
   
   if(p->sigPending == 0) return;
+  //p->sigPending = 48;//testing
   int countUserSignals = 0;
   uint currmask = p->sigMask;
 
@@ -721,8 +727,11 @@ void handlingSignals(void){
   if(countUserSignals > 0){
     //memmove(p->userTfBackup,p->tf,sizeof(struct trapframe));
     *p->userTfBackup=*p->tf;
-    p->espBackup = *((uint *)p->userTfBackup->esp);
-    cprintf("start esp:adr %x value:%x\n",p->userTfBackup->esp,*((uint *)p->userTfBackup->esp));
+    p->userStackbackup = kalloc();
+    memmove(p->userStackbackup,(void *)p->tf->esp,(uint)invoke_sigret_end - (uint)invoke_sigret_start + 8);
+
+    //p->espBackup = *((uint *)p->userTfBackup->esp);
+    //cprintf("start esp:adr %x value:%x\n",p->userTfBackup->esp,*((uint *)p->userTfBackup->esp));
     for (int i=0;i<MAXSIG;i++){
       if(countUserSignals <= 0) break;
       if (sigismember(&myproc()->sigPending,i)){
@@ -769,12 +778,13 @@ void handlingUserSignal(int signum,int count){
     sigdown(&p->sigPending,signum);
     p->sigMask = p->sighandler[signum]->sigmask; 
     if (count > 0){
+      //ToDo: check this ugly case
       *((int*)(p->tf->esp-4)) = signum;
       p->tf->esp -= 4;
       p->tf->eip=(uint)p->sighandler[signum]->sa_handler;
-
+      //p->sighandler[signum]->sa_handler(signum); //not working
     }else{
-      p->tf->esp -= (uint)invoke_sigret_end - (uint)invoke_sigret_end ;
+      p->tf->esp -= (uint)invoke_sigret_end - (uint)invoke_sigret_start ;
       memmove((void*)p->tf->esp, invoke_sigret_start, (uint)invoke_sigret_end - (uint)invoke_sigret_start);
       *((int*)(p->tf->esp-4)) = signum;
       *((int*)(p->tf->esp-8)) = p->tf->esp; // sigret system call code address

@@ -128,7 +128,7 @@ sys_sigret(void)
     sigret();
   }
 
-  cprintf("end sys_sigret\n");
+  //cprintf("end sys_sigret\n");
   return 0;
   
 }
