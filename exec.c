@@ -106,6 +106,8 @@ exec(char *path, char **argv)
     curproc->sighandler[i]->sa_handler = sigkill;
     
   curproc->sighandler[SIGCONT]->sa_handler = sigign;
+  curproc->sighandler[SIGSTOP]->sa_handler = sigstop;
+
   
   freevm(oldpgdir);
   return 0;

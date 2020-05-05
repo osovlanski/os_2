@@ -4,7 +4,7 @@
 #include "signal.h"
 
 // #define	SIGKILL	9
-// #define	SIGSTOP	17	
+// #define	SIGSTOP	17
 // #define	SIGCONT	19
 
 // int cpid[5];
@@ -17,28 +17,47 @@
 //     }
 // }
 
-
-void handler(int sig){
-    printf(1,"handler #1 on user space, signum: %d\n",sig);
-}
-
-void handler2(int sig){
-    printf(1,"handler #2 on user space, signum: %d\n",sig);
-}
-
-
-int
-main(int argc, char *argv[])
+void handler(int sig)
 {
+    printf(1, "handler #1 on user space, signum: %d\n", sig);
+}
+
+void handler2(int sig)
+{
+    printf(1, "handler #2 on user space, signum: %d\n", sig);
+}
+
+
+
+int main(int argc, char *argv[])
+{
+
     struct sigaction sa;
-    memset(&sa,0,sizeof(sa));
+    memset(&sa, 0, sizeof(sa));
     sa.sa_handler = &handler;
-    sigaction(4,&sa,null);
+    sigaction(4, &sa, null);
     sa.sa_handler = &handler2;
-    sigaction(5,&sa,null);
-    kill(getpid(),4);
-    kill(getpid(),5);
-    
+    sigaction(5, &sa, null);
+    //kill(getpid(),4);
+    //kill(getpid(),5);
+
+    uint pid;
+    if ((pid = fork()) == 0)
+    {
+        while(1==1){}
+    }
+    else
+    {
+        printf(1,"pid %d\n",pid);
+        //kill(pid, SIGSTOP);
+        kill(pid, 4);
+        kill(pid, 5);
+        
+        kill(pid, SIGKILL);
+        wait();
+    }
+
+     
     printf(1,"bye!!!!!!!!!!!!!!!\n");
     exit();
 }

@@ -80,7 +80,10 @@ struct proc {
 
   //uint espBackup;
 
-  char *userStackbackup;
+  //char *userStackbackup;
+  //int backup_eip;
+  int ignoreSignal;
+  int backupMask;
 };
 
 

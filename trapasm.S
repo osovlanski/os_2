@@ -25,7 +25,9 @@ alltraps:
 .globl trapret
 .global afterhandling
 trapret:
+  pushl %esp
   call handlingSignals
+  addl $4, %esp
 afterhandling:
 
   popal
