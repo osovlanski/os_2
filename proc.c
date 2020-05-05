@@ -23,6 +23,9 @@ extern void afterhandling(void);
 
 static void wakeup1(void *chan);
 
+int sigisdefault(int signum) { return myproc()->sighandler[signum]->sa_handler == myproc()->sighandler[SIG_DFL]->sa_handler; }
+int sigisignore(int signum) { return myproc()->sighandler[signum]->sa_handler == myproc()->sighandler[SIG_IGN]->sa_handler; }
+static int isKernelSig(int signum) { return signum == SIG_DFL || signum == SIG_IGN || signum == SIGSTOP || signum == SIGKILL || signum == SIGCONT; }
 
 void pinit(void)
 {
@@ -72,11 +75,19 @@ myproc(void)
 
 int allocpid(void)
 {
+  //old:
   int pid;
   acquire(&ptable.lock);
   pid = nextpid++;
   release(&ptable.lock);
   return pid;
+
+  //new:
+  // int pid;
+  // do {
+  //   pid = nextpid;
+  // } while (!cas(&nextpid, pid, pid + 1));
+  // return pid;
 }
 
 //PAGEBREAK: 32
@@ -90,6 +101,7 @@ allocproc(void)
   struct proc *p;
   char *sp;
 
+  //(old part 1)
   acquire(&ptable.lock);
 
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
@@ -97,8 +109,23 @@ allocproc(void)
       goto found;
 
   release(&ptable.lock);
+
   return 0;
 
+  //new
+  // pushcli();
+  // do {
+  //   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+  //     if(p->state == UNUSED)
+  //       break;
+  //   if (p == &ptable.proc[NPROC]) {
+  //     popcli();
+  //     return 0; // ptable is full
+  //   }
+  // } while (!cas(&p->state, UNUSED, EMBRYO));
+  // popcli();
+
+  //old (part 2):
 found:
   p->state = EMBRYO;
   release(&ptable.lock);
@@ -113,15 +140,11 @@ found:
   }
   sp = p->kstack + KSTACKSIZE;
 
-  
   // Leave room for trap frame.
   sp -= sizeof *p->tf;
   p->tf = (struct trapframe *)sp;
 
-  
-  
   // Set up new context to start executing at forkret,
-  
 
   // which returns to trapret.
   sp -= 4;
@@ -132,28 +155,28 @@ found:
   memset(p->context, 0, sizeof *p->context);
 
   //push handlers to start of stack (for avoiding overriding data)
-  char *sp1;
-  sp1 = p->kstack+(MAXSIG*sizeof(struct sigaction))+sizeof *p->userTfBackup;
+  char *sp1;  //stack pointer
+  sp1 = p->kstack + (MAXSIG * sizeof(struct sigaction)) + sizeof *p->userTfBackup;
   sp1 -= sizeof *p->userTfBackup;
   p->userTfBackup = (struct trapframe *)sp1;
 
-
-  for (int i = 0; i < MAXSIG; i++){
-      sp1 -= sizeof(struct sigaction);
-      p->sighandler[i] = (struct sigaction *)sp1;
-      p->sighandler[i]->sa_handler = sigkill;
+  for (int i = 0; i < MAXSIG; i++)
+  {
+    sp1 -= sizeof(struct sigaction);
+    p->sighandler[i] = (struct sigaction *)sp1;
+    p->sighandler[i]->sa_handler = sigkill;
   }
-  
+
   p->sighandler[SIG_IGN]->sa_handler = sigign;
   p->sighandler[SIGSTOP]->sa_handler = sigstop;
   p->sighandler[SIGCONT]->sa_handler = sigign;
   sigemptyset(&p->sigMask);
   sigemptyset(&p->sigPending);
-     
+
   p->context->eip = (uint)forkret;
 
   p->ignoreSignal = 0;
-  
+
   return p;
 }
 
@@ -253,7 +276,12 @@ int fork(void)
   np->cwd = idup(curproc->cwd);
 
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
-  memcpy(np->sighandler, curproc->sighandler, 32 * sizeof(void *));
+  //memcpy((void*)np->sighandler, (void *)curproc->sighandler, 32 * sizeof(void *));
+  for (int i =0;i<MAXSIG;i++){
+    *np->sighandler[i]=*curproc->sighandler[i];
+    //*np->sighandler[i]->sa_handler = *curproc->sighandler[i]->sa_handler;
+    //*np->sighandler[i]->sigmask = *curproc->sighandler[i]->sigmask;
+  }
 
   np->sigMask = curproc->sigMask;
 
@@ -387,17 +415,30 @@ void scheduler(void)
     acquire(&ptable.lock);
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     {
-      if (p->state != RUNNABLE) 
+      if (p->state != RUNNABLE)
         continue;
-
+       
+      // if (p->sighandler[SIG_IGN]->sa_handler =! p->sighandler[SIGCONT]->sa_handler)
+      // {
+      //   continue;
+      // }
+      
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
-
+      // if (p->sighandler[SIG_IGN]->sa_handler == p->sighandler[SIGSTOP]->sa_handler){
+      //   if (sigismember(&p->sigPending,SIGCONT){
+      //     p->signalHandler[SIGCONT]->sa_handler(SIGCONT);
+      //   }else{
+      //     yield();
+      //   }
+        
+      // }
       swtch(&(c->scheduler), p->context);
+      
       switchkvm();
 
       // Process is done running for now.
@@ -461,11 +502,6 @@ void forkret(void)
   }
 
   // Return to "caller", actually trapret (see allocproc).
-  // myproc()->context->ebx = myproc()->sigPending;
-  //*(myproc()->userTfBackup) = *(myproc()->tf);
-    // *((int*)(myproc()->tf->esp-4)) = 9;
-    // myproc()->tf->esp -= 4;
-    
 }
 
 // Atomically release lock and sleep on chan.
@@ -529,35 +565,40 @@ void wakeup(void *chan)
   release(&ptable.lock);
 }
 
-void sigcont(int pid){
-  cprintf("sigcont pid: %d\n",pid);
+void sigcont(int pid)
+{
+  cprintf("sigcont pid: %d\n", pid);
   struct proc *p;
   acquire(&ptable.lock);
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
-    if (p->pid == pid){
+    if (p->pid == pid)
+    {
       p->sighandler[SIGSTOP]->sa_handler = sigstop;
       p->sighandler[SIGCONT]->sa_handler = sigign;
+      //p->state = RUNNABLE;
     }
 
   }
 
-  release(&ptable.lock); 
+  
+
+  release(&ptable.lock);
 }
 
 void sigstop(int pid)
 {
-  cprintf("stop pid: %d\n",pid);
+  cprintf("stop pid: %d\n", pid);
   struct proc *p;
   acquire(&ptable.lock);
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
-    if (p->pid == pid){
+    if (p->pid == pid)
+    {
       p->sighandler[SIGCONT]->sa_handler = sigcont;
       p->sighandler[SIGSTOP]->sa_handler = sigign;
-
+      //p->state = FROZEN;
     }
-
   }
 
   release(&ptable.lock);
@@ -566,56 +607,51 @@ void sigstop(int pid)
 
 void sigign(int i)
 {
+  cprintf("ignore: %d\n",i);
 }
 
 void sigkill(int pid)
 {
-  cprintf("kill pid: %d\n",pid);
+  cprintf("kill pid: %d\n", pid);
   struct proc *p;
   acquire(&ptable.lock);
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
-    if (p->pid == pid){
+    if (p->pid == pid)
+    {
       //cprintf("kill pid %d\n",pid);
       p->killed = 1;
       // Wake process from sleep if necessary.
       if (p->state == SLEEPING)
         p->state = RUNNABLE;
-      
+
       break;
     }
-
   }
   release(&ptable.lock);
   //cprintf("done killing\n");
-
 }
 
 // void sigset(uint *pending,int signum){
 //    *pending |= 1 << (signum-1);
 // }
 
+int registerSig(int signum, struct sigaction *act, struct sigaction *oldact)
+{
+  if (signum == SIGKILL || signum == SIGSTOP)
+  {
+    return -1;
+  }
 
-int registerSig(int signum,struct sigaction *act,struct sigaction *oldact){
-    if(signum == SIGKILL || signum == SIGSTOP){
-      return -1;
-    }
-    
-    // checked if sigkill or sigstop are blocked
-    // according to FAQ not sure if needed
-    // if (sigismember(act->sigmask,SIGKILL) || sigismember(act->sigmask,SIGSTOP)){
-    //     return -1;
-    // }
-    struct proc * p = myproc();
-    if (oldact != null){
-        *oldact = *p->sighandler[signum];
-    }
+  struct proc *p = myproc();
+  if (oldact != null)
+  {
+    *oldact = *p->sighandler[signum];
+  }
 
-    *p->sighandler[signum] = *act;
-    //p->sighandler[signum]->sa_handler = act->sa_handler;
-    //p->sighandler[signum]->sigmask = act->sigmask;
-    
-    return 0;
+  *p->sighandler[signum] = *act;
+
+  return 0;
 }
 
 // Kill the process with the given pid.
@@ -624,7 +660,7 @@ int registerSig(int signum,struct sigaction *act,struct sigaction *oldact){
 int kill(int pid, int signum)
 {
   struct proc *p;
-  
+
   if (signum < 0 || signum > 31)
   {
     return -1;
@@ -633,15 +669,16 @@ int kill(int pid, int signum)
   acquire(&ptable.lock);
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
-    if (p->pid == pid){
-      if (signum == SIGKILL || signum == SIGSTOP || !sigismember(&p->sigMask,signum)){
-        sigup(&p->sigPending,signum);
+    if (p->pid == pid)
+    {
+      if (signum == SIGKILL || signum == SIGSTOP || !sigismember(&p->sigMask, signum))
+      { //cannot ignore SIGSTOP and SIGKILL
+        sigup(&p->sigPending, signum);
       }
 
       release(&ptable.lock);
       return 0;
     }
-
   }
   release(&ptable.lock);
   return -1;
@@ -660,6 +697,7 @@ void procdump(void)
       [RUNNABLE] "runble",
       [RUNNING] "run   ",
       [ZOMBIE] "zombie"};
+  //[FROZEN] "frozen"};
   int i;
   struct proc *p;
   char *state;
@@ -684,82 +722,78 @@ void procdump(void)
   }
 }
 
-//static int sigisdefault(int signum);
-//static int sigisignore(int signum);
-//static void handlingKernelSignal(int signum);
-//static void handlingUserSignals();
-
-
-int sigisdefault(int signum) {return myproc()->sighandler[signum]->sa_handler == myproc()->sighandler[SIG_DFL]->sa_handler;}
-int sigisignore(int signum) {return myproc()->sighandler[signum]->sa_handler == myproc()->sighandler[SIG_IGN]->sa_handler;}
-
-static int isKernelSig(int signum) {return signum == SIG_DFL || signum == SIG_IGN || signum == SIGSTOP || signum == SIGKILL || signum == SIGCONT;}
-
-int sigret(void){
-  struct proc * p = myproc();
+int sigret(void)
+{
+  struct proc *p = myproc();
   *p->tf = *p->userTfBackup;
-  p->sigMask=p->backupMask;
+  p->sigMask = p->backupMask;
   p->ignoreSignal = 0;
 
   return 0;
 }
 
-void handleKernelSignal(int signum){
-  struct proc * p = myproc();
+void handleKernelSignal(int signum)
+{
+  struct proc *p = myproc();
   p->backupMask = p->sigMask;
-  p->sigMask = p->sighandler[signum]->sigmask; 
+  p->sigMask = p->sighandler[signum]->sigmask;
   p->sighandler[signum]->sa_handler(p->pid);
   p->sigMask = p->backupMask;
 }
-
-int myPop(){
-  int signum=0;
+//
+int myPop()
+{
+  int signum = 0;
   acquire(&ptable.lock);
-  do{
-    if(sigismember(&myproc()->sigPending,signum)){
-      sigdown(&myproc()->sigPending,signum);
+  do
+  {
+    if (sigismember(&myproc()->sigPending, signum))
+    {
+      sigdown(&myproc()->sigPending, signum);
       break;
     }
-    signum+=1;
+    signum += 1;
 
-  }while(signum < MAXSIG);
+  } while (signum < MAXSIG);
 
   release(&ptable.lock);
   return signum;
 }
 
- void handlingSignals(struct trapframe * tf){
-  struct proc * p = myproc();
-  if(p==null) return;
-  if(p->ignoreSignal) return;
-  if ((tf->cs&3) != DPL_USER) return; // CPU in user mode
+void handlingSignals(struct trapframe *tf)
+{
+  struct proc *p = myproc();
+  if (p == null)
+    return;
+  if (p->ignoreSignal)
+    return;
+  if ((tf->cs & 3) != DPL_USER)
+    return; // CPU in user mode
   int signum = myPop();
-  if(signum == MAXSIG) return;
+  if (signum == MAXSIG)
+    return;
   //kernel
-  if(signum == SIGKILL || signum == SIGSTOP){
+  if (signum == SIGKILL || signum == SIGSTOP)
+  {
     handleKernelSignal(signum);
-    return; 
+    return;
   }
-  if (sigismember(&p->sigMask,signum)) return;
-  if(isKernelSig(signum)){
+  if (sigismember(&p->sigMask, signum))
+    return;
+  if (isKernelSig(signum) || sigisdefault(signum) || sigisignore(signum))
+  {
     handleKernelSignal(signum);
-    return; 
+    return;
   }
   //user
   p->ignoreSignal = 1;
-  *p->userTfBackup=*p->tf;
-  p->backupMask=p->sigMask;
-  p->sigMask = p->sighandler[signum]->sigmask; 
-  p->tf->esp -= (uint)invoke_sigret_end - (uint)invoke_sigret_start ;
-  memmove((void*)p->tf->esp, invoke_sigret_start, (uint)invoke_sigret_end - (uint)invoke_sigret_start);
-  *((int*)(p->tf->esp-4)) = signum;
-  *((int*)(p->tf->esp-8)) = p->tf->esp; // sigret system call code address
+  *p->userTfBackup = *p->tf;
+  p->backupMask = p->sigMask;
+  p->sigMask = p->sighandler[signum]->sigmask;
+  p->tf->esp -= (uint)invoke_sigret_end - (uint)invoke_sigret_start;
+  memmove((void *)p->tf->esp, invoke_sigret_start, (uint)invoke_sigret_end - (uint)invoke_sigret_start);
+  *((int *)(p->tf->esp - 4)) = signum;
+  *((int *)(p->tf->esp - 8)) = p->tf->esp; // sigret system call code address
   p->tf->esp -= 8;
-  p->tf->eip=(uint)p->sighandler[signum]->sa_handler;
+  p->tf->eip = (uint)p->sighandler[signum]->sa_handler;
 }
-
-
-
-
-
-

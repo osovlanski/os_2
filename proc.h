@@ -78,10 +78,6 @@ struct proc {
   struct sigaction *sighandler[MAXSIG];        
   struct trapframe *userTfBackup;
 
-  //uint espBackup;
-
-  //char *userStackbackup;
-  //int backup_eip;
   int ignoreSignal;
   int backupMask;
 };
