@@ -420,7 +420,7 @@ void scheduler(void)
     acquire(&ptable.lock);
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     {
-      if(p->frozen > 0 && !sigismember(&p->sigPending,SIGCONT))
+      if(p->frozen > 0 && p->contRequest == 0)
         continue;    
   
       if (p->state != RUNNABLE)
@@ -633,6 +633,11 @@ int kill(int pid, int signum)
       { //cannot ignore SIGSTOP and SIGKILL
         sigup(&p->sigPending, signum);
       }
+      //casr custome action is also sigcont
+      uint sa = (uint)p->sighandler[signum]->sa_handler;
+      if (signum == SIGCONT || sa == SIGCONT){
+        p->contRequest = 1;
+      }
 
       release(&ptable.lock);
       return 0;
@@ -730,31 +735,37 @@ void handlingSignals(struct trapframe *tf)
   //cprintf("sa:::: %d\n",sa);
   if (sa == SIG_IGN) return;
   //kernel
-  if (sa == SIG_DFL){
-    if (signum == SIGKILL){
-      //cprintf("kill\n");
-      p->killed = 1;
-      // Wake process from sleep if necessary.
-      if (p->state == SLEEPING)
-        p->state = RUNNABLE;
-      return;
-    }
-    if (signum == SIGSTOP){
-      //cprintf("stop\n");
-      p->frozen = 1;
-      yield();
-      return;
-    }
-    if (sigismember(&p->sigMask, signum))
-      return;
-    if (signum == SIGCONT){
-      //cprintf("cont\n");
-      p->frozen = 0;
-      return;
-    }
-
+  if ((sa == SIG_DFL && signum == SIGKILL) || sa == SIGKILL){
+    p->killed = 1;
+    // Wake process from sleep if necessary.
+    if (p->state == SLEEPING)
+      p->state = RUNNABLE;
     return;
   }
+  if ((sa == SIG_DFL && signum == SIGSTOP) || sa == SIGSTOP){
+    //cprintf("stop\n");
+    p->frozen = 1;
+    yield();
+    return;
+  }
+  if (sigismember(&p->sigMask, signum))
+    return;
+  if ((sa == SIG_DFL && signum == SIGCONT) || sa == SIGCONT){
+    //cprintf("cont\n");
+    p->frozen = 0;
+    p->contRequest = 0;
+    return;
+  }
+  //else :if still sig_default -> the behaviour is like sigkill
+  if(sa == SIG_DFL){
+     p->killed = 1;
+    // Wake process from sleep if necessary.
+    if (p->state == SLEEPING)
+      p->state = RUNNABLE;
+    return;
+  } 
+
+  
       
   //user
   p->ignoreSignal = 1;

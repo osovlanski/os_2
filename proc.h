@@ -82,6 +82,7 @@ struct proc {
   int backupMask;
 
   int frozen;
+  int contRequest;
 };
 
 

@@ -34,6 +34,8 @@ int main(int argc, char *argv[])
 
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = (void *)SIGCONT;
+    sigaction(3, &sa, null);
     sa.sa_handler = &handler;
     sigaction(4, &sa, null);
     sa.sa_handler = &handler2;
@@ -57,8 +59,9 @@ int main(int argc, char *argv[])
         sleep(10);
         printf(1,"father: send cont to son\n");
         
-        
-        kill(childpid,SIGCONT);    
+        //kill(childpid,3);//custom sigaction to sigcont   
+        //sleep(10); 
+        kill(childpid,SIGCONT);// not suppose to do anythibg 
     
         sleep(10);
         printf(1,"send 2 user signals to son:\n");
@@ -66,7 +69,7 @@ int main(int argc, char *argv[])
         kill(childpid, 4);
         kill(childpid, 5);
         
-        kill(childpid, SIGKILL);
+        kill(childpid, 11); //like kill 9 in default
         wait();
     }
 
