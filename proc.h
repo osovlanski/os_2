@@ -80,6 +80,8 @@ struct proc {
 
   int ignoreSignal;
   int backupMask;
+
+  int frozen;
 };
 
 

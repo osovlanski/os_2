@@ -101,13 +101,12 @@ exec(char *path, char **argv)
   curproc->tf->esp = sp;
   switchuvm(curproc);
   
-  
-  for (int i = 2; i < MAXSIG; i++)
-    curproc->sighandler[i]->sa_handler = sigkill;
-    
-  curproc->sighandler[SIGCONT]->sa_handler = sigign;
-  curproc->sighandler[SIGSTOP]->sa_handler = sigstop;
+  curproc->sighandler[SIG_DFL]->sa_handler = SIG_DFL;
+  *((int *)curproc->sighandler[SIG_IGN]) = SIG_IGN;
 
+  for (int i = 2; i < MAXSIG; i++){
+    curproc->sighandler[i]->sa_handler = SIG_DFL;
+  }
   
   freevm(oldpgdir);
   return 0;

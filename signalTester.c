@@ -44,27 +44,25 @@ int main(int argc, char *argv[])
     uint childpid;
     if ((childpid = fork()) == 0)
     {
-        // printf(1,"child: childpid: %d\n",getchildpid());
-        // printf(1,"child: stop\n");
-        // kill(getpid(),SIGSTOP);
-        // sleep(10);
+        printf(1,"child: pid: %d\n",getpid());
+        printf(1,"child: stop\n");
+        kill(getpid(),SIGSTOP);
         printf(1,"child: continue\n");
         while(1==1){}
     }
     else
     {
-        // printf(1,"father: childpid: %d\n",getchildpid());
-        // printf(1,"father: start cpu burst time\n");
-        // double x =0;
-        // for(double j = 0;j < 100000; j+=0.01) {
-        //     x =  x + 3.14 * 89.64;
-        // }
-        // printf(1,"father: end cpu burst time\n");
-        // printf(1,"father: send cont to son\n");
-        // kill(childpid,SIGCONT);    
+        kill(childpid,SIG_IGN);
+        printf(1,"father: pid: %d\n",getpid());
+        sleep(10);
+        printf(1,"father: send cont to son\n");
+        
+        
+        kill(childpid,SIGCONT);    
     
-        // printf(1,"send 2 user signals to son:\n");
-    
+        sleep(10);
+        printf(1,"send 2 user signals to son:\n");
+
         kill(childpid, 4);
         kill(childpid, 5);
         
@@ -72,7 +70,7 @@ int main(int argc, char *argv[])
         wait();
     }
 
-     
+    
     printf(1,"bye!!!!!!!!!!!!!!!\n");
     exit();
 }

@@ -123,15 +123,16 @@ void            wakeup(void*);
 void            yield(void);
 
 int             registerSig(int signum,struct sigaction* act,struct sigaction* oldact);
-void            sigcont(int);
-void            sigstop(int);
-void            sigign(int);
-void            sigkill(int);
+//void            sigcont(int);
 
-int            sigret(void);
+//void            sigign(int);
+//void            sigstop(int);
+//void            sigkill(int);
 
-int             sigisdefault(int signum); 
-int             sigisignore(int signum); 
+int             sigret(void);
+
+//int             sigisdefault(int signum); 
+//int             sigisignore(int signum); 
 
 
 
