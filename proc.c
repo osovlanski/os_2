@@ -78,18 +78,18 @@ myproc(void)
 int allocpid(void)
 {
   //old:
-  int pid;
-  acquire(&ptable.lock);
-  pid = nextpid++;
-  release(&ptable.lock);
-  return pid;
+  // int pid;
+  // acquire(&ptable.lock);
+  // pid = nextpid++;
+  // release(&ptable.lock);
+  // return pid;
 
   //new:
-  // int pid;
-  // do {
-  //   pid = nextpid;
-  // } while (!cas(&nextpid, pid, pid + 1));
-  // return pid;
+  int pid;
+  do {
+    pid = nextpid;
+  } while (!cas(&nextpid, pid, pid + 1));
+  return pid;
 }
 
 //PAGEBREAK: 32
@@ -104,33 +104,33 @@ allocproc(void)
   char *sp;
 
   //(old part 1)
-  acquire(&ptable.lock);
+  // acquire(&ptable.lock);
 
-  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if (p->state == UNUSED)
-      goto found;
+  // for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+  //   if (p->state == UNUSED)
+  //     goto found;
 
-  release(&ptable.lock);
+  // release(&ptable.lock);
 
-  return 0;
+  // return 0;
 
   //new
-  // pushcli();
-  // do {
-  //   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-  //     if(p->state == UNUSED)
-  //       break;
-  //   if (p == &ptable.proc[NPROC]) {
-  //     popcli();
-  //     return 0; // ptable is full
-  //   }
-  // } while (!cas(&p->state, UNUSED, EMBRYO));
-  // popcli();
+  pushcli();
+  do {
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+      if(p->state == UNUSED)
+        break;
+    if (p == &ptable.proc[NPROC]) {
+      popcli();
+      return 0; // ptable is full
+    }
+  } while (!cas(&p->state, UNUSED, EMBRYO));
+  popcli();
 
   //old (part 2):
-found:
-  p->state = EMBRYO;
-  release(&ptable.lock);
+//found:
+  // p->state = EMBRYO;
+  // release(&ptable.lock);
 
   p->pid = allocpid();
 
@@ -169,11 +169,6 @@ found:
     p->sighandler[i]->sa_handler = SIG_DFL;
   }
 
-  //struct sigaction temp = {(void*)-1,(uint)0}; 
-  *((int *)p->sighandler[SIG_IGN]) = SIG_IGN;
-  //cprintf("allocproc: %d\n",p->sighandler[1]->sa_handler);
-  //p->sighandler[SIGSTOP]->sa_handler = sigstop;
-  //p->sighandler[SIGCONT]->sa_handler = sigcont;
   sigemptyset(&p->sigMask);
   sigemptyset(&p->sigPending);
 
@@ -635,7 +630,7 @@ int kill(int pid, int signum)
       }
       //casr custome action is also sigcont
       uint sa = (uint)p->sighandler[signum]->sa_handler;
-      if (signum == SIGCONT || sa == SIGCONT){
+      if ((sa == SIG_DFL && signum != SIGSTOP) || sa == SIGCONT || sa == SIGKILL /*signum == SIGCONT || sa == SIGCONT*/){
         p->contRequest = 1;
       }
 
@@ -764,9 +759,7 @@ void handlingSignals(struct trapframe *tf)
       p->state = RUNNABLE;
     return;
   } 
-
-  
-      
+    
   //user
   p->ignoreSignal = 1;
   *p->userTfBackup = *p->tf;
