@@ -83,6 +83,7 @@ struct proc {
 
   int frozen;
   int contRequest;
+  int killRequest;
 };
 
 

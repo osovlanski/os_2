@@ -415,12 +415,19 @@ void scheduler(void)
     acquire(&ptable.lock);
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     {
-      if(p->frozen > 0 && p->contRequest == 0)
+      
+      //if kill request and proc is sleep - than wakeup
+      if (p->state == SLEEPING && p->killRequest > 0){
+        //cprintf("aaaa %d \n",p->frozen > 0 && p->contRequest == 0 && p->killRequest == 0);
+        p->state = RUNNABLE;
+      }
+        
+      if(p->frozen > 0 && p->contRequest == 0 && p->killRequest == 0)
         continue;    
   
-      if (p->state != RUNNABLE)
+      if (p->state != RUNNABLE) 
         continue;
-      
+
        
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
@@ -591,7 +598,7 @@ void sigign(int i)
 
 int registerSig(int signum, struct sigaction *act, struct sigaction *oldact)
 {
-  if (signum == SIGKILL || signum == SIGSTOP)
+  if (signum < 0 || signum > 31)
   {
     return -1;
   }
@@ -601,8 +608,11 @@ int registerSig(int signum, struct sigaction *act, struct sigaction *oldact)
   {
     *oldact = *p->sighandler[signum];
   }
-
-  *p->sighandler[signum] = *act;
+  if (act != null){
+    if (signum == SIGSTOP || signum == SIGKILL)
+      return -1;
+    *p->sighandler[signum] = *act;
+  }
 
   return 0;
 }
@@ -627,12 +637,21 @@ int kill(int pid, int signum)
       if (signum == SIGKILL || signum == SIGSTOP || !sigismember(&p->sigMask, signum))
       { //cannot ignore SIGSTOP and SIGKILL
         sigup(&p->sigPending, signum);
+
+        //scenarios: 
+        //1. cast custome action is also sigcont
+        //2. kill after stop (without cont)
+        //3. kill after sleep 
+        uint sa = (uint)p->sighandler[signum]->sa_handler;
+        if (signum == SIGCONT || sa == SIGCONT  /*signum == SIGCONT || sa == SIGCONT*/){
+          p->contRequest = 1;
+        }
+
+        if (signum == SIGKILL || (sa == SIG_DFL && signum != SIGSTOP && signum != SIGCONT) /*signum == SIGCONT || sa == SIGCONT*/){
+          p->killRequest = 1;
+        }
       }
-      //casr custome action is also sigcont
-      uint sa = (uint)p->sighandler[signum]->sa_handler;
-      if ((sa == SIG_DFL && signum != SIGSTOP) || sa == SIGCONT || sa == SIGKILL /*signum == SIGCONT || sa == SIGCONT*/){
-        p->contRequest = 1;
-      }
+      
 
       release(&ptable.lock);
       return 0;
@@ -723,15 +742,18 @@ void handlingSignals(struct trapframe *tf)
   struct proc *p = myproc();
   if (p == null) return;
   if (p->ignoreSignal) return;
-  if ((tf->cs & 3) != DPL_USER) return; // CPU in user mode
+  if (p->killRequest == 0 && (tf->cs & 3) != DPL_USER) return; // CPU in user mode
   if (p->sigPending == 0) return;
+  
   int signum = myPop();
   uint sa = (uint)p->sighandler[signum]->sa_handler;
-  //cprintf("sa:::: %d\n",sa);
+  //cprintf("sa:::: %d   signum:::::%d\n",sa,signum);
+  
   if (sa == SIG_IGN) return;
   //kernel
   if ((sa == SIG_DFL && signum == SIGKILL) || sa == SIGKILL){
     p->killed = 1;
+    p->killRequest = 0;
     // Wake process from sleep if necessary.
     if (p->state == SLEEPING)
       p->state = RUNNABLE;
@@ -754,6 +776,7 @@ void handlingSignals(struct trapframe *tf)
   //else :if still sig_default -> the behaviour is like sigkill
   if(sa == SIG_DFL){
      p->killed = 1;
+     p->killRequest = 0;
     // Wake process from sleep if necessary.
     if (p->state == SLEEPING)
       p->state = RUNNABLE;
