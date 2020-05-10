@@ -210,11 +210,15 @@ void userinit(void)
   // run this process. the acquire forces the above
   // writes to be visible, and the lock is also needed
   // because the assignment might not be atomic.
-  acquire(&ptable.lock);
+  
+  
+  //acquire(&ptable.lock);
+  pushcli();
 
   p->state = RUNNABLE;
 
-  release(&ptable.lock);
+  //release(&ptable.lock);
+  popcli();
 }
 
 // Grow current process's memory by n bytes.
