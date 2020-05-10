@@ -8,6 +8,8 @@
 #include "spinlock.h"
 //#include "string.c"
 
+int DEBUG = 1;
+
 struct
 {
   struct spinlock lock;
@@ -215,7 +217,10 @@ void userinit(void)
   //acquire(&ptable.lock);
   pushcli();
 
-  p->state = RUNNABLE;
+  //p->state = RUNNABLE;
+  if(!cas(&p->state,EMBRYO,RUNNABLE)){
+    if(DEBUG) cprintf("userinit: cas failed");
+  }
 
   //release(&ptable.lock);
   popcli();
@@ -290,12 +295,15 @@ int fork(void)
   np->sigMask = curproc->sigMask;
 
   pid = np->pid;
+  //acquire(&ptable.lock);
+  pushcli();
+  //np->state = RUNNABLE;
+  if(!cas(&np->state,EMBRYO,RUNNABLE)){
+    if(DEBUG) cprintf("fork: cas failed");
+  }
 
-  acquire(&ptable.lock);
-
-  np->state = RUNNABLE;
-
-  release(&ptable.lock);
+  //release(&ptable.lock);
+  popcli();
 
   return pid;
 }
