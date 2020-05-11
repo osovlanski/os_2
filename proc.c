@@ -167,6 +167,7 @@ allocproc(void)
     sp1 -= sizeof(struct sigaction);
     p->sighandler[i] = (struct sigaction *)sp1;
     p->sighandler[i]->sa_handler = SIG_DFL;
+    p->sighandler[i]->sigmask = 0;
   }
 
   sigemptyset(&p->sigMask);
@@ -634,7 +635,7 @@ int kill(int pid, int signum)
   {
     if (p->pid == pid)
     {
-      if (signum == SIGKILL || signum == SIGSTOP || !sigismember(&p->sigMask, signum))
+      //if (signum == SIGKILL || signum == SIGSTOP || !sigismember(&p->sigMask, signum))
       { //cannot ignore SIGSTOP and SIGKILL
         sigup(&p->sigPending, signum);
 
@@ -643,7 +644,7 @@ int kill(int pid, int signum)
         //2. kill after stop (without cont)
         //3. kill after sleep 
         uint sa = (uint)p->sighandler[signum]->sa_handler;
-        if (signum == SIGCONT || sa == SIGCONT  /*signum == SIGCONT || sa == SIGCONT*/){
+        if ((signum == SIGCONT && sa == SIG_DFL)  || sa == SIGCONT  /*signum == SIGCONT || sa == SIGCONT*/){
           p->contRequest = 1;
         }
 
@@ -765,12 +766,30 @@ void handlingSignals(struct trapframe *tf)
     yield();
     return;
   }
-  if (sigismember(&p->sigMask, signum))
+  
+  if (sigismember(&p->sigMask, signum)){
+    cprintf("signum %d is blocked\n",signum);
+    sigup(&p->sigPending, signum);
+
+    //Evil Sceneario !!!!
+    if(p->contRequest) {
+      do{
+        //cprintf("when sigcont is blocked\n");
+        yield();
+      }while(sigismember(&p->sigMask, signum) && p->killRequest == 0);
+      
+    }
+
     return;
+  }
+  p->backupMask = p->sigMask;
+  p->sigMask = p->sighandler[signum]->sigmask;
+
   if ((sa == SIG_DFL && signum == SIGCONT) || sa == SIGCONT){
-    //cprintf("cont\n");
+    cprintf("cont: mask %d\n",p->sigMask);
     p->frozen = 0;
     p->contRequest = 0;
+    p->sigMask = p->backupMask;
     return;
   }
   //else :if still sig_default -> the behaviour is like sigkill
@@ -780,8 +799,10 @@ void handlingSignals(struct trapframe *tf)
     // Wake process from sleep if necessary.
     if (p->state == SLEEPING)
       p->state = RUNNABLE;
+    p->sigMask = p->backupMask;
     return;
   } 
+  p->sigMask = p->backupMask;
     
   //user
   p->ignoreSignal = 1;
