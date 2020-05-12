@@ -3,6 +3,8 @@
 #include "user.h"
 #include "signal.h"
 
+//#include "x86.h"
+
 void passedTest(int i){
     printf(1,"test #%d is passed\n",i);
 }
@@ -318,7 +320,7 @@ void test7(){
         printf(1,"father: pid: %d\n",getpid());
         sleep(10);
         kill(childpid, SIGCONT);
-        sleep(10);
+        sleep(5);
         //kill(childpid, SIGKILL);
         kill(childpid, SIGKILL); //like kill 9 in default
         wait();
@@ -327,7 +329,6 @@ void test7(){
     restoreActions();
     passedTest(7);
 }
-
 
 
 int main(int argc, char *argv[])

@@ -23,11 +23,6 @@ extern void afterhandling(void);
 
 static void wakeup1(void *chan);
 
-//static int sigisdefault(int signum) { return myproc()->sighandler[signum]->sa_handler == myproc()->sighandler[SIG_DFL]->sa_handler; }
-//static int sigiscont(int signum) { return myproc()->sighandler[signum]->sa_handler == myproc()->sighandler[SIG_DFL]->sa_handler; }
-//static int sigisignore(int signum) { return myproc()->sighandler[signum]->sa_handler == myproc()->sighandler[SIG_IGN]->sa_handler; }
-
-//static int isKernelSig(int signum) { return sigisdefault(signum) ||  }
 
 void pinit(void)
 {
@@ -563,39 +558,12 @@ void wakeup(void *chan)
   release(&ptable.lock);
 }
 
-// void sigcont(int pid)
-// {
-//   cprintf("sigcont pid: %d\n", pid);
-//   myproc()->frozen=0;
-//   //myproc()->sighandler[SIGSTOP]->sa_handler = sigstop;
-//   //myproc()->sighandler[SIGCONT]->sa_handler = sigign;        
-// }
-
-// void sigstop(int pid)
-// {
-//   cprintf("stop pid: %d\n", pid);
-//   myproc()->frozen=1;
-//   //myproc()->sighandler[SIGCONT]->sa_handler = sigcont;
-//   //myproc()->sa_handler = sigign;
-//   yield();
-// }
 
 void sigign(int i)
 {
   cprintf("ignore: %d\n",i);
 }
 
-// void sigkill(int pid)
-// {
-//   p->killed = 1;
-//   // Wake process from sleep if necessary.
-//   if (p->state == SLEEPING)
-//     p->state = RUNNABLE;
-// }
-
-// void sigset(uint *pending,int signum){
-//    *pending |= 1 << (signum-1);
-// }
 
 int registerSig(int signum, struct sigaction *act, struct sigaction *oldact)
 {
@@ -738,6 +706,27 @@ int myPop()
   return signum;
 }
 
+
+void sigkill(struct proc * p){
+  p->killed = 1;
+  p->killRequest = 0;
+  if (p->state == SLEEPING)
+    p->state = RUNNABLE;
+  p->sigMask = p->backupMask;
+}
+
+void sigstop(struct proc * p){
+  p->frozen = 1;
+  p->sigMask = p->backupMask;
+  yield();
+}
+
+void sigcont(struct proc * p){
+  p->frozen = 0;
+  p->contRequest = 0;
+  p->sigMask = p->backupMask;
+}
+
 void handlingSignals(struct trapframe *tf)
 {
   struct proc *p = myproc();
@@ -752,18 +741,14 @@ void handlingSignals(struct trapframe *tf)
   
   if (sa == SIG_IGN) return;
   //kernel
+  p->backupMask = p->sigMask;
+  p->sigMask = p->sighandler[signum]->sigmask;
   if ((sa == SIG_DFL && signum == SIGKILL) || sa == SIGKILL){
-    p->killed = 1;
-    p->killRequest = 0;
-    // Wake process from sleep if necessary.
-    if (p->state == SLEEPING)
-      p->state = RUNNABLE;
+    sigkill(p);
     return;
   }
   if ((sa == SIG_DFL && signum == SIGSTOP) || sa == SIGSTOP){
-    //cprintf("stop\n");
-    p->frozen = 1;
-    yield();
+    sigstop(p);
     return;
   }
   
@@ -772,34 +757,25 @@ void handlingSignals(struct trapframe *tf)
     sigup(&p->sigPending, signum);
 
     //Evil Sceneario !!!!
-    if(p->contRequest) {
+    if((sa == SIG_DFL && signum == SIGCONT) || sa == SIGCONT) {
       do{
-        //cprintf("when sigcont is blocked\n");
         yield();
       }while(sigismember(&p->sigMask, signum) && p->killRequest == 0);
-      
+
+      sigcont(p);
     }
 
     return;
   }
-  p->backupMask = p->sigMask;
-  p->sigMask = p->sighandler[signum]->sigmask;
+ 
 
   if ((sa == SIG_DFL && signum == SIGCONT) || sa == SIGCONT){
-    cprintf("cont: mask %d\n",p->sigMask);
-    p->frozen = 0;
-    p->contRequest = 0;
-    p->sigMask = p->backupMask;
+    sigcont(p);
     return;
   }
   //else :if still sig_default -> the behaviour is like sigkill
   if(sa == SIG_DFL){
-     p->killed = 1;
-     p->killRequest = 0;
-    // Wake process from sleep if necessary.
-    if (p->state == SLEEPING)
-      p->state = RUNNABLE;
-    p->sigMask = p->backupMask;
+     sigkill(p);
     return;
   } 
   p->sigMask = p->backupMask;

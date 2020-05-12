@@ -5,7 +5,8 @@
         "*.tcc": "c",
         "memory": "c",
         "proc.h": "c",
-        "signal.h": "c"
+        "signal.h": "c",
+        "type_traits": "c"
     },
     "C_Cpp.errorSquiggles": "Disabled"
 }
