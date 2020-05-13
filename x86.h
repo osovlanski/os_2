@@ -144,7 +144,7 @@ lcr3(uint val)
   asm volatile("movl %0,%%cr3" : : "r" (val));
 }
 
-// eax == [ebx] ? [ebx] = newval : eax = [ebx]
+//eax == [ebx] ? [ebx] = newval : eax = [ebx]
 // static inline int cas(volatile void * addr, int expected, int newval) {
 //   int ret = 1;
 //   asm volatile("lock; cmpxchgl %3, (%2)\n\t" 
