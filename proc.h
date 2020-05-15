@@ -84,6 +84,10 @@ struct proc {
   int frozen;
   int contRequest;
   int killRequest;
+
+  //locks
+  int lkWake;
+  int lkWait;
 };
 
 

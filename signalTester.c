@@ -3,6 +3,8 @@
 #include "user.h"
 #include "signal.h"
 
+//#include "x86.h"
+
 void passedTest(int i){
     printf(1,"test #%d is passed\n",i);
 }
@@ -35,23 +37,20 @@ void restoreActions(){
 Test1: 
 - checking sigaction - insert all the valid/unvalid values
 - checking new act is registed and old act is updated
-
 Test2:
 - checking all user/kernel signals 
 - check signal in mutiple process (father and son)
-
 Test3:
 - kill after the proces is stopped (not sleeping)
-
 Test4:
 - use only 'custom' kernal signals
 - check that all the other signals behavior is like sigkill (not including sigstop,sigcont,sigkill)
-
 Test5:
 - kill process that's sleeping (wake him up and kill him)
-
-
-
+Task6:
+- change sigcont to ignore then do stop/cont/kill
+Task7
+- 
 ToDo: 8/5  
 - test sigprocmask, kernel signals and user signals.
 - test blocking signals (mask)
@@ -146,11 +145,11 @@ void test2(){
     else
     {
         printf(1,"father: pid: %d\n",getpid());
-        printf(1,"father: ignore signal");
-        kill(childpid,SIG_IGN);
+        printf(1,"father: ignore signal\n");
+        //kill(childpid,SIG_IGN);
         printf(1,"father: send cont to son\n");
         sleep(10);
-        kill(childpid,SIGCONT);// not suppose to do anythibg 
+        kill(childpid,SIGCONT);
     
         sleep(10);
         printf(1,"send 2 user signals to son:\n");
@@ -259,6 +258,69 @@ void test5(){
 }
 
 
+void test6(){
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = (void *)SIG_IGN;
+    sigaction(SIGCONT, &sa, null);
+    uint childpid;
+    if ((childpid = fork()) == 0)
+    {
+        printf(1,"child: pid: %d\n",getpid());
+        sleep(5);
+        kill(getpid(), SIGSTOP);
+        sleep(5);
+        failedTest(1,"son is suppode do be killed and not run this line");
+    }
+    else
+    {
+        
+        printf(1,"father: pid: %d\n",getpid());
+        sleep(50);
+        kill(childpid, SIGCONT); //like kill 9 in default
+        kill(childpid, SIGKILL); //like kill 9 in default
+        wait();
+    }
+
+    restoreActions();
+    passedTest(6);
+}
+
+
+void test7(){
+
+    if (sigprocmask(1 << SIGCONT) != 0){
+        failedTest(7,"ssigprocmask faild");
+    }
+
+    if (sigprocmask(1 << SIGCONT) != 1 << SIGCONT){
+        failedTest(7,"ssigprocmask faild");
+    }
+
+    uint childpid;
+    if ((childpid = fork()) == 0)
+    {
+        printf(1,"child: pid: %d\n",getpid());
+        sleep(5);
+        kill(getpid(), SIGSTOP);
+        sleep(5);
+        exit();
+        //failedTest(7,"son is not suppose get this lines");
+    }
+    else
+    {
+        printf(1,"father: pid: %d\n",getpid());
+        sleep(10);
+        kill(childpid, SIGCONT);
+        sleep(5);
+        //kill(childpid, SIGKILL);
+        kill(childpid, SIGKILL); //like kill 9 in default
+        wait();
+    }
+
+    restoreActions();
+    passedTest(7);
+}
 
 
 int main(int argc, char *argv[])
@@ -268,6 +330,8 @@ int main(int argc, char *argv[])
     test3();
     test4();
     test5();
+    test6();
+    test7();
     printf(1,"ALL TESTS PASSED !!!\n");
     exit();
 }
