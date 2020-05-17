@@ -243,12 +243,12 @@ void test5(){
     if ((childpid = fork()) == 0)
     {
         printf(1,"child: pid: %d\n",getpid());
-        sleep(10000);
+        sleep(1000000);
     }
     else
     {
         printf(1,"father: pid: %d\n",getpid());
-        sleep(5);
+        sleep(50);
         kill(childpid, SIGKILL); //like kill 9 in default
         wait();
     }
@@ -325,13 +325,13 @@ void test7(){
 
 int main(int argc, char *argv[])
 {
-    test1();
-    test2();
-    test3();
-    test4();
+    // test1();
+    // test2();
+    // test3();
+    // test4();
     test5();
-    test6();
-    test7();
+    // test6();
+    // test7();
     printf(1,"ALL TESTS PASSED !!!\n");
     exit();
 }

@@ -49,7 +49,7 @@ struct context {
   uint eip;
 };
 
-enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
+enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE,_UNUSED };
 
 struct sigaction {
   void (*sa_handler)(int);
@@ -85,9 +85,6 @@ struct proc {
   int contRequest;
   int killRequest;
 
-  //locks
-  int lkWake;
-  int lkWait;
 };
 
 
