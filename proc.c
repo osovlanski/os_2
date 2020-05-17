@@ -20,6 +20,7 @@ int nextpid = 1;
 extern void forkret(void);
 extern void trapret(void);
 extern void afterhandling(void);
+extern int getProcState(int);
 
 static void wakeup1(void *chan);
 
@@ -791,4 +792,15 @@ void handlingSignals(struct trapframe *tf)
   *((int *)(p->tf->esp - 8)) = p->tf->esp; // sigret system call code address
   p->tf->esp -= 8;
   p->tf->eip = (uint)p->sighandler[signum]->sa_handler;
+}
+
+int getProcState(int pid){
+  struct proc* p;
+  
+      for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+        if(p->pid == pid){
+          return p->state;
+        }
+      }
+      return -1;
 }
