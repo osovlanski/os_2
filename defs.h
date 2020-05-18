@@ -130,6 +130,7 @@ int             registerSig(int signum,struct sigaction* act,struct sigaction* o
 //void            sigkill(int);
 
 int             sigret(void);
+int             getProcState(int pid);
 
 //int             sigisdefault(int signum); 
 //int             sigisignore(int signum); 

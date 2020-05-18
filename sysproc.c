@@ -7,68 +7,63 @@
 #include "mmu.h"
 #include "proc.h"
 
-int
-sys_fork(void)
+int sys_fork(void)
 {
   return fork();
 }
 
-int
-sys_exit(void)
+int sys_exit(void)
 {
   exit();
-  return 0;  // not reached
+  return 0; // not reached
 }
 
-int
-sys_wait(void)
+int sys_wait(void)
 {
   return wait();
 }
 
-int
-sys_kill(void)
+int sys_kill(void)
 {
   int pid, signum;
 
-  if(argint(0, &pid) < 0 || argint(1, &signum) < 0)
+  if (argint(0, &pid) < 0 || argint(1, &signum) < 0)
     return -1;
 
-  return kill(pid,signum);
+  return kill(pid, signum);
 }
 
-int
-sys_getpid(void)
+int sys_getpid(void)
 {
   return myproc()->pid;
 }
 
-int
-sys_sbrk(void)
+int sys_sbrk(void)
 {
   int addr;
   int n;
 
-  if(argint(0, &n) < 0)
+  if (argint(0, &n) < 0)
     return -1;
   addr = myproc()->sz;
-  if(growproc(n) < 0)
+  if (growproc(n) < 0)
     return -1;
   return addr;
 }
 
-int
-sys_sleep(void)
+int sys_sleep(void)
 {
   int n;
   uint ticks0;
 
-  if(argint(0, &n) < 0)
+  if (argint(0, &n) < 0)
     return -1;
   acquire(&tickslock);
   ticks0 = ticks;
-  while(ticks - ticks0 < n){
-    if(myproc()->killed){
+  while (ticks - ticks0 < n)
+  {
+    if (myproc()->killed)
+    {
       release(&tickslock);
       return -1;
     }
@@ -80,8 +75,7 @@ sys_sleep(void)
 
 // return how many clock tick interrupts have occurred
 // since start.
-int
-sys_uptime(void)
+int sys_uptime(void)
 {
   uint xticks;
 
@@ -91,45 +85,51 @@ sys_uptime(void)
   return xticks;
 }
 
-int
-sys_sigprocmask(void)
+int sys_sigprocmask(void)
 {
-    int sigprocmask;
+  int sigprocmask;
 
-    if(argint(0, &sigprocmask) < 0)
-        return -1;
-    
-    uint old = myproc()->sigMask;
-    myproc()->sigMask=sigprocmask;
+  if (argint(0, &sigprocmask) < 0)
+    return -1;
 
-    return old;
+  uint old = myproc()->sigMask;
+  myproc()->sigMask = sigprocmask;
+
+  return old;
 }
 
-int
-sys_sigaction(void) 
+int sys_sigaction(void)
 {
-    int signum;
-    struct sigaction *act;
-    struct sigaction *oldact;
+  int signum;
+  struct sigaction *act;
+  struct sigaction *oldact;
 
-    if(argint(0, &signum) < 0 
-        || argptr(1,(void *)&act,sizeof(struct sigaction)) < 0 
-        || argptr(2,(void *)&oldact,sizeof(struct sigaction)) < 0){
-        
-        return -1;
-    }
-    
-    return registerSig(signum,act,oldact);
+  if (argint(0, &signum) < 0 || argptr(1, (void *)&act, sizeof(struct sigaction)) < 0 || argptr(2, (void *)&oldact, sizeof(struct sigaction)) < 0)
+  {
+
+    return -1;
+  }
+
+  return registerSig(signum, act, oldact);
 }
-int
-sys_sigret(void)
+int sys_sigret(void)
 {
-  if (myproc()->tf && myproc()->userTfBackup){     
+  if (myproc()->tf && myproc()->userTfBackup)
+  {
     sigret();
   }
 
   //cprintf("end sys_sigret\n");
-  
+
   return 0;
-  
+}
+
+int sys_getProcState(void)
+{
+  int pid;
+  if (argint(0, &pid) < 0){
+    return -1;
+  }
+
+  return getProcState(pid);
 }

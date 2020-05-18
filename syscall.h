@@ -23,3 +23,4 @@
 #define SYS_sigprocmask 22
 #define SYS_sigaction 23
 #define SYS_sigret 24
+#define SYS_getProcState 25
