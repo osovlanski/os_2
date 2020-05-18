@@ -325,8 +325,11 @@ void exit(void)
   //acquire(&ptable.lock);
   pushcli();
   //curproc->state = -ZOMBIE;
-  if (!cas(&curproc->state,RUNNING,-ZOMBIE))
+  while(curproc->state != RUNNING){}
+  if (!cas(&curproc->state,RUNNING,-ZOMBIE)){
+    cprintf("curr state: %d \n",curproc->state);
     panic("cant cas from running to -zombie in exit");
+  }
     
   // Parent might be sleeping in wait().
   
@@ -354,11 +357,6 @@ void exit(void)
   panic("zombie exit");
 }
 
-void local_sleep(void *chan)
-{
-  sched();
-}
-
 
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
@@ -368,15 +366,18 @@ int wait(void)
   int havekids, pid;
   struct proc *curproc = myproc();
   pushcli(); 
-  while(curproc->state == -RUNNING){}
-  if (!cas(&curproc->state,RUNNING,-SLEEPING)){
-    panic("failed in wait");
-  }
-  //curproc->state = -SLEEPING;
   
+  //curproc->state = -SLEEPING;
+  while(curproc->state != RUNNING){}
+  if (!cas(&curproc->state,RUNNING,-SLEEPING)){
+    panic("exit: failed in transition from runnint to -sleep");
+  }
+
   //acquire(&ptable.lock);
   for (;;)
   {
+    
+
     // Scan through table looking for exited children.
     havekids = 0;
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
@@ -428,7 +429,7 @@ int wait(void)
     //   p->chan = 0;
     // }
     curproc->chan = curproc;
-    local_sleep(curproc);
+    sched();
   }
 }
 
