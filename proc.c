@@ -213,7 +213,7 @@ void userinit(void)
 
   //p->state = RUNNABLE;
   if(!cas(&p->state,EMBRYO,RUNNABLE)){
-    panic("panica userinit");
+    panic("panic at userinit: failed tranistion from embryo to runnable");
   }
 
   //release(&ptable.lock);
@@ -397,7 +397,8 @@ int wait(void)
           p->parent = 0;
           p->name[0] = 0;
           p->killed = 0;
-          curproc->state = RUNNING;
+          cas(&curproc->state,-SLEEPING,RUNNING);
+          //curproc->state = RUNNING;
           //p->state = UNUSED;
           if (!cas(&p->state, _UNUSED, UNUSED))
             panic("cant cas from -unuesed to unused in wait");
@@ -493,18 +494,18 @@ void scheduler(void)
       c->proc = 0;
 
       // after call from yield
-        if(!cas(&p->state, -RUNNABLE, RUNNABLE)){}
-          // panic("cant move from -runnable to runnable in scheduler");
+      if(!cas(&p->state, -RUNNABLE, RUNNABLE)){}
+        // panic("cant move from -runnable to runnable in scheduler");
 
-        // after call from sleep
-        if(!cas(&p->state, -SLEEPING, SLEEPING)){
-          // panic("cant move from -sleeping to sleeping in sleep");
-        }
+      // after call from sleep
+      if(!cas(&p->state, -SLEEPING, SLEEPING)){
+        // panic("cant move from -sleeping to sleeping in sleep");
+      }
 
-        // from exit
-        if (cas(&p->state, -ZOMBIE, ZOMBIE))
-          wakeup1(p->parent);
-        else{}
+      // from exit
+      if (cas(&p->state, -ZOMBIE, ZOMBIE))
+        wakeup1(p->parent);
+      else{}
           // panic("cant cas from -zombie to zombie in exit");
         
 
@@ -607,6 +608,7 @@ void sleep(void *chan, struct spinlock *lk)
     release(lk);
   }
   
+  //p->state =SLEEPING
   //p->chan = chan;
   sched();
   // Tidy up.
@@ -634,13 +636,13 @@ wakeup1(void *chan)
       //cprintf("1");
       while(p->state == -SLEEPING){}
       //cprintf("2");
-      if(!cas(&p->state, SLEEPING, -RUNNABLE)){
-        panic("cant move from sleeping to -runnable ");
-      }
-      p->chan = 0;
-      if(!cas(&p->state, -RUNNABLE, RUNNABLE)){
-        panic("cant move from -runnable to runnable ");
-      }
+      if(cas(&p->state, SLEEPING, -RUNNABLE)){
+        p->chan = 0;
+        if(!cas(&p->state, -RUNNABLE, RUNNABLE)){
+          panic("cant move from -runnable to runnable ");
+        }
+      }else panic("cant move from sleeping to -runnable ");
+      
     }
     
 }
@@ -703,7 +705,7 @@ int kill(int pid, int signum)
     {
       if (p->pid == pid)
       {
-        if (signum == SIGKILL || signum == SIGSTOP || !sigismember(&p->sigMask, signum))
+        //if (signum == SIGKILL || signum == SIGSTOP || !sigismember(&p->sigMask, signum))
         { //cannot ignore SIGSTOP and SIGKILL
           sigup(&p->sigPending, signum);
 
@@ -717,11 +719,14 @@ int kill(int pid, int signum)
           }
 
           if (signum == SIGKILL || (sa == SIG_DFL && signum != SIGSTOP && signum != SIGCONT) /*signum == SIGCONT || sa == SIGCONT*/){
-            while (p->state == -SLEEPING || p->state == -RUNNING){}
-            cas(&p->state,RUNNING,-RUNNABLE);
-            cas(&p->state,SLEEPING,-RUNNABLE);
             p->killRequest = 1;
-            cas(&p->state,-RUNNABLE,RUNNABLE);
+            if (p->state == -SLEEPING || p->state == SLEEPING){
+              while(p->state == -SLEEPING){} 
+              if(!cas(&p->state,SLEEPING,RUNNABLE)){
+                panic("kill: failed to wakeup process");
+              }
+            }
+            
           }
         }
         
@@ -789,6 +794,7 @@ int sigret(void)
 void sigkill(struct proc * p){
   p->killed = 1;
   p->killRequest = 0;
+  //ToDo: checks if cas is necessary 
   cas(&p->state,SLEEPING,-RUNNABLE);
   //if (p->state == SLEEPING)
     //p->state = RUNNABLE;
@@ -827,16 +833,16 @@ int myPop()
   return signum;
 }
 
+
 void handlingSignals(struct trapframe *tf)
 {
   struct proc *p = myproc();
   if (p == null) return;
   if (p->ignoreSignal) return;
   if (p->killRequest == 0 && (tf->cs & 3) != DPL_USER) return; // CPU in user mode
-  if (p->state == -SLEEPING) return;
+  //if (p->state == -SLEEPING) return;
   if (p->sigPending == 0) return;
 
-  
   int signum = myPop();
   uint sa = (uint)p->sighandler[signum]->sa_handler;
   //cprintf("sa:::: %d   signum:::::%d\n",sa,signum);

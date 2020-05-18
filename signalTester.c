@@ -119,6 +119,35 @@ void test1(){
     passedTest(1);
 }
 
+void testA(){
+    uint childpid;
+    if ((childpid = fork()) == 0)
+    {
+        printf(1,"child: pid: %d\n",getpid());
+        while(1==1){ }
+    }
+    else
+    {
+        printf(1,"father: pid: %d\n",getpid());
+        printf(1,"send 2 user signals to son:\n");
+
+        sleep(50);
+        kill(childpid, 4);
+        printf(1,"-------------------------------\n");
+        sleep(50);
+
+        kill(childpid, 5);
+
+        sleep(50);
+        
+        kill(childpid, SIGKILL); //like kill 9 in default
+        wait();
+    }
+
+    restoreActions();
+
+}
+
 void test2(){
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
@@ -243,12 +272,12 @@ void test5(){
     if ((childpid = fork()) == 0)
     {
         printf(1,"child: pid: %d\n",getpid());
-        sleep(1000000);
+        sleep(10000000);
     }
     else
     {
         printf(1,"father: pid: %d\n",getpid());
-        sleep(50);
+        sleep(20);
         kill(childpid, SIGKILL); //like kill 9 in default
         wait();
     }
@@ -325,11 +354,12 @@ void test7(){
 
 int main(int argc, char *argv[])
 {
+    testA();
     // test1();
-    // test2();
+    test2();
     // test3();
     // test4();
-    test5();
+    // test5();
     // test6();
     // test7();
     printf(1,"ALL TESTS PASSED !!!\n");
