@@ -871,11 +871,11 @@ void handlingSignals(struct trapframe *tf)
   //kernel
    p->backupMask = p->sigMask;
   p->sigMask = p->sighandler[signum]->sigmask;
-  if ((sa == SIG_DFL && signum == SIGKILL) || sa == SIGKILL){
+  if ((sa == SIG_DFL && signum == SIGKILL) || (sa == SIGKILL && !sigismember(&p->backupMask, signum))){
     sigkill(p);
     return;
   }
-  if ((sa == SIG_DFL && signum == SIGSTOP) || sa == SIGSTOP){
+  if ((sa == SIG_DFL && signum == SIGSTOP) || (sa == SIGSTOP && !sigismember(&p->backupMask, signum))){
     sigstop(p);
     return;
   }
