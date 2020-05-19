@@ -812,24 +812,40 @@ void sigcont(struct proc * p){
   p->contRequest = 0;
   p->sigMask = p->backupMask;
 }//
+// int myPop()
+// {
+//   int signum = 0;
+//   //pushcli();
+//   acquire(&ptable.lock);
+//   do
+//   {
+//     if (sigismember(&myproc()->sigPending, signum))
+//     {
+//       sigdown(&myproc()->sigPending, signum);
+//       break;
+//     }
+//     signum += 1;
+
+//   } while (signum < MAXSIG);
+
+//   release(&ptable.lock);
+//   //popcli();
+//   return signum;
+// }
+
 int myPop()
 {
-  int signum = 0;
-  //pushcli();
-  acquire(&ptable.lock);
+  struct proc *p = myproc();
+  int signum,pending;
   do
   {
-    if (sigismember(&myproc()->sigPending, signum))
-    {
-      sigdown(&myproc()->sigPending, signum);
-      break;
+    for(signum=0; signum < MAXSIG;signum++){
+      if(sigismember(&p->sigPending, signum))
+        break;
     }
-    signum += 1;
+    pending = p->sigPending;
+  } while (!cas(&p->sigPending,pending,pending & ~(1 << signum)));
 
-  } while (signum < MAXSIG);
-
-  release(&ptable.lock);
-  //popcli();
   return signum;
 }
 
@@ -860,15 +876,15 @@ void handlingSignals(struct trapframe *tf)
     return;
   }
   
-  if (sigismember(&p->sigMask, signum)){
-    cprintf("signum %d is blocked\n",signum);
+  if (sigismember(&p->backupMask, signum)){
+    //cprintf("signum %d is blocked\n",signum);
     sigup(&p->sigPending, signum);
 
     //Evil Sceneario !!!!
-    if((sa == SIG_DFL && signum == SIGCONT) || sa == SIGCONT) {
+    if(((sa == SIG_DFL && signum == SIGCONT) || sa == SIGCONT) && p->frozen != 0) {
       do{
         yield();
-      }while(sigismember(&p->sigMask, signum) && p->killRequest == 0);
+      }while(sigismember(&p->backupMask, signum) && p->killRequest == 0);
 
       sigcont(p);
     }
