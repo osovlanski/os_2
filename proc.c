@@ -499,6 +499,10 @@ void scheduler(void)
 
       // after call from sleep
       if(!cas(&p->state, -SLEEPING, SLEEPING)){
+        if(cas(&p->killRequest,1,0)){
+          p->killRequest = 1;
+          p->state = RUNNABLE;
+        }
         // panic("cant move from -sleeping to sleeping in sleep");
       }
 
