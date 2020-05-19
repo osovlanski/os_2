@@ -722,7 +722,7 @@ int kill(int pid, int signum)
             p->contRequest = 1;
           }
 
-          if (signum == SIGKILL || (sa == SIG_DFL && signum != SIGSTOP && signum != SIGCONT) /*signum == SIGCONT || sa == SIGCONT*/){
+          if (signum == SIGKILL || (sa == SIG_DFL && signum != SIGSTOP && signum != SIGCONT && !sigismember(&p->sigMask, signum)) /*signum == SIGCONT || sa == SIGCONT*/){
             p->killRequest = 1;
             if (p->state == -SLEEPING || p->state == SLEEPING){
               while(p->state == -SLEEPING){} 
